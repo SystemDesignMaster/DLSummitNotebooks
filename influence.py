@@ -143,3 +143,96 @@ def main():
 
                         elif branch == 2:
                             update_I(layer, inf_5, 0, I_layer, labels, frag_sz[5], k, outlier_nodes_idx)
+
+                        pbar.update(len(labels))
+                        # print(inf_0.shape, inf_1.shape, inf_2.shape, inf_3.shape, inf_4.shape, inf_5.shape)
+
+            except tf.errors.OutOfRangeError:
+                pass
+            
+            # Save I_layer
+            with open(I_mat_dirpath + 'I_%s.json' % layer, 'w') as f:
+                json.dump(I_layer, f, indent=2)
+
+            end = time.time()
+            print(end - start)
+            print(progress_counter)
+            print(progress_counter * batch)
+
+    # Generate chains
+    # pred_class = 270
+    # channels = [1, 120]
+    # generate_save_chain(pred_class, all_layers, I_mat_dirpath, channels)
+
+
+def parse_args():
+    '''
+    Parse arguments and pass as arguments object
+    '''
+
+    parser = argparse.ArgumentParser('Summit')
+
+    parser.add_argument('--layer', type=str, default='mixed3a',
+                        help='name of layer to generate I matrix')
+
+    parser.add_argument('--gpu', type=int, default=0,
+                        help='gpu cuda visible device')
+
+    parser.add_argument('--batch', type=int, default=500,
+                        help='batch size for loading images')
+
+    return parser.parse_args()
+
+
+def _parse_function(example_proto, image_size=224):
+    '''
+    Parse datasets
+    '''
+    
+    def _bytes_feature(value):
+        return tf.train.Feature(
+            bytes_list=tf.train.BytesList(value=[value]))
+
+    def _int64_feature(value):
+        return tf.train.Feature(
+            int64_list=tf.train.Int64List(value=[value]))
+    
+    feature_set = {
+        'image/filename': tf.FixedLenFeature([], tf.string),
+        'image/encoded': tf.FixedLenFeature([], tf.string),
+        'image/height': tf.FixedLenFeature([], tf.int64),
+        'image/width': tf.FixedLenFeature([], tf.int64),
+        'image/channels': tf.FixedLenFeature([], tf.int64),
+        'image/class/label': tf.FixedLenFeature([], tf.int64),
+        'image/class/synset': tf.FixedLenFeature([], tf.string)}
+  
+    parsed_features = tf.parse_single_example(example_proto, feature_set)
+    label = parsed_features['image/class/label']
+    synset = parsed_features['image/class/synset']
+    image = parsed_features['image/encoded']
+    image = tf.image.decode_jpeg(image, channels=3)
+    image = tf.image.resize_images(image, tf.constant([image_size, image_size]))
+    
+    return image, label, synset
+
+
+def get_weight_tensors(layer):
+    '''
+    Get weight tensors for given layer
+    '''
+    # Get weight tensors
+    t_w0 = tf.get_default_graph().get_tensor_by_name('import/%s_1x1_w:0' % layer)
+    t_w1 = tf.get_default_graph().get_tensor_by_name('import/%s_3x3_bottleneck_w:0' % layer)
+    t_w2 = tf.get_default_graph().get_tensor_by_name('import/%s_3x3_w:0' % layer)
+    t_w3 = tf.get_default_graph().get_tensor_by_name('import/%s_5x5_bottleneck_w:0' % layer)
+    t_w4 = tf.get_default_graph().get_tensor_by_name('import/%s_5x5_w:0' % layer)
+    t_w5 = tf.get_default_graph().get_tensor_by_name('import/%s_pool_reduce_w:0' % layer)
+    
+    return t_w0, t_w1, t_w2, t_w3, t_w4, t_w5
+
+
+def get_intermediate_layer_tensors(prev_layer, layer):
+    # Get intermediate layer tensors
+    t_a0 = tf.get_default_graph().get_tensor_by_name('import/%s:0' % prev_layer)
+    t_a1 = tf.get_default_graph().get_tensor_by_name('import/%s_3x3_bottleneck:0' % layer)
+    t_a2 = tf.get_default_graph().get_tensor_by_name('import/%s_5x5_bottleneck:0' % layer)
