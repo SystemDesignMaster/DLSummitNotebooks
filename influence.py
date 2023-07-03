@@ -411,3 +411,73 @@ def gen_empty_I(num_class, num_channel):
         - I: num_class * num_channel matrix, whose elements are an empty dict
     '''
     I = [[defaultdict(lambda: 0) for _ in range(num_channel)] for _ in range(num_class)]
+    return I
+
+
+def update_I(layer, influences, channel, I_layer, labels, num_out_channel, k, outlier_nodes_idx):
+    
+    start = time.time()
+    num_in_channel = int(influences.shape[-1]/num_out_channel)
+
+    temp = 0
+    temp2 = 0
+    for c in range(num_out_channel):
+
+        # Get top prev channels
+        influence_indices = [i*num_out_channel + c for i in range(num_in_channel)]
+
+        all_batch_infs_c = influences[:, influence_indices]
+        all_batch_topk_c = []
+
+        for batch_inf in all_batch_infs_c:
+            all_batch_topk_c.append(get_topk_ele(batch_inf, k, layer, outlier_nodes_idx))
+        all_batch_topk_c = np.array(all_batch_topk_c)
+
+        for pred_class, topks in zip(labels, all_batch_topk_c):
+            # Make class be in range of 0 ~ 999
+            pred_class = pred_class - 1
+
+            # Add the count
+            for top_prev in topks:
+                I_layer[pred_class][channel][str(top_prev)] += 1
+        channel += 1
+
+    return channel
+
+
+def get_topk_ele(arr, k, layer, outlier_nodes_idx):
+    topk_and_more = np.argsort(arr)[-(k + len(outlier_nodes_idx)) :]
+    topk = [channel for channel in topk_and_more if channel not in outlier_nodes_idx][-k:]
+    return topk
+
+
+def load_inf_matrix(mat_dirpath, layer):
+    if mat_dirpath[-1] == '/':
+        filepath = mat_dirpath + 'I_' + layer + '.json'
+    else:
+        filepath = mat_dirpath + '/I_' + layer + '.json'
+        
+    with open(filepath) as f:
+        I_mat = json.load(f)
+    
+    return I_mat
+
+
+# def gen_impactful_chains(Is, layer, channels, pred_class, all_layers, layer_fragment_sizes, chain_k):
+#     '''
+#     Generate impactful chains starting from channels in a layer to input layer
+#     * input
+#         - Is: influence matrices
+#         - layer: starting layer
+#         - channels: selected channels in the layer
+#         - pred_class: predicted class
+#         - all_layers: all layers
+#         - k: the number of top impactful previous channels
+#     * output
+#         - chains: a dictionary, whose
+#             - key: a layer
+#             - val: a dictionary, which maps
+#                 - key: a neuron in current layer
+#                 - val: list of important neurons in the previous layer
+#     '''
+    
