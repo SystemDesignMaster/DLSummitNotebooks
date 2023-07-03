@@ -320,3 +320,94 @@ def get_prev_layer(layers, layer):
     '''
     prev_layer = layers[layers.index(layer) - 1]
     return prev_layer
+
+
+def get_weight_sizes(nodes, all_layers):
+    
+    weight_sizes = {}
+    for n in nodes:
+        if '_w' in n.name and 'mixed' in n.name:
+            layer = n.name.split('_')[0]
+            if layer in all_layers:
+                if layer not in weight_sizes:
+                    weight_sizes[layer] = {}
+                weight_sizes[layer][n.name] = get_shape_of_node(n)
+
+    return weight_sizes
+
+
+def get_act_sizes(weight_sizes, mixed_layers):
+    act_sizes = {}
+    for layer in mixed_layers:
+        act_sizes[layer] = []
+        for f_tile in ['1x1', '3x3', '5x5']:
+            a_size = weight_sizes[layer]['{}_{}_w'.format(layer, f_tile)][2]
+            act_sizes[layer].append(a_size)
+    return act_sizes
+
+
+# def get_topk_channels(t_a, t_w, c, num_prev_channel, mask, h, w, k):
+#     '''
+#     deprecated
+#     '''
+#     # Get masked stacked weight tensor
+#     t_w_c = tf.slice(t_w, [0, 0, 0, c], [h, w, num_prev_channel, 1])
+#     t_stacked_w_c = tf.squeeze(tf.stack([t_w_c for _ in range(num_prev_channel)], axis=2), axis=[-1])
+#     zeros = tf.zeros_like(t_stacked_w_c)
+#     t_masked_w = tf.where(mask, t_stacked_w_c, zeros, name='import/t_mask_c')
+
+#     # Get conv2d tensor
+#     t_conv2d_tensor_c = tf.nn.conv2d(t_a, t_masked_w, [1, 3, 3, 1], 'SAME')
+
+#     # Get influences
+#     t_inf_c = tf.math.reduce_sum(t_conv2d_tensor_c, [1, 2])
+
+#     # Get top k impactful previous channels
+#     t_top_inf_vals, t_top_prev_channels = tf.math.top_k(t_inf_c, k=k)
+    
+#     return t_top_prev_channels
+
+
+def get_infs(t_a, t_w):
+    
+    ''' old
+    # Get depthwise conv2d tensor
+    # t_intermediate = tf.nn.depthwise_conv2d(t_a, t_w, [1, 3, 3, 1], 'SAME')
+    
+    # Apply Relu
+    # t_intermediate = tf.nn.relu(t_intermediate)
+    
+    # Get influences
+    # t_inf_c = tf.math.reduce_sum(t_intermediate, [1, 2])
+    '''
+
+    ''' new
+    # Get depthwise conv2d tensor
+    # t_intermediate = tf.nn.depthwise_conv2d(t_a, t_w, [1, 3, 3, 1], 'SAME')
+    
+    # Get Frobenius norm
+    # t_inf_c = tf.norm(t_intermediate, ord='fro', axis=[1, 2])
+    '''
+    
+    return tf.math.reduce_max(tf.nn.depthwise_conv2d(t_a, t_w, [1, 3, 3, 1], 'SAME'), [1, 2])
+
+
+def gen_mask(height, width, num_channel):
+    mask = np.zeros((height, width, num_channel, num_channel), dtype=bool)
+    true_patch = np.ones((height, width), dtype=bool)
+    for c in range(num_channel):
+        mask[:, :, c, c] = true_patch
+
+    return mask
+
+
+def gen_empty_I(num_class, num_channel):
+    '''
+    Generate an empty initialized I
+    * input
+        - num_class: the number of class
+        - num_channel: the number of the channel in the output layer
+    * out
+        - I: num_class * num_channel matrix, whose elements are an empty dict
+    '''
+    I = [[defaultdict(lambda: 0) for _ in range(num_channel)] for _ in range(num_class)]
