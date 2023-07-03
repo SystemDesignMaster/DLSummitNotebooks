@@ -481,3 +481,76 @@ def load_inf_matrix(mat_dirpath, layer):
 #                 - val: list of important neurons in the previous layer
 #     '''
     
+#     # Get layers starting from the given layer to the input layer
+#     start_idx, end_idx = all_layers.index(layer), all_layers.index('mixed3a')
+#     target_layers = all_layers[start_idx: end_idx - 1: -1]
+    
+#     # Initialize the chains
+#     chains = {}
+    
+#     # Aggregate the chains across layers
+#     curr_channels = channels[:]
+#     for curr_layer in target_layers:
+#         chains[curr_layer] = []
+#         agg_prev_channels = []
+        
+#         for curr_channel in curr_channels:
+#             prev_channels, prev_infs = get_top_prevs(Is, curr_layer, curr_channel, pred_class, layer_fragment_sizes[curr_layer], chain_k)
+#             curr_channel_dict = {'channel': curr_channel, 'prev_channels': []}
+#             for prev_c, prev_inf in zip(prev_channels, prev_infs):
+#                 curr_channel_dict['prev_channels'].append({'prev_channel': prev_c, 'inf': prev_inf})
+#             chains[curr_layer].append(curr_channel_dict)
+#             agg_prev_channels += prev_channels
+#         curr_channels = agg_prev_channels[:]
+    
+#     return chains
+
+
+def get_top_prevs(I_layers, layer, channel, pred_class, layer_channels, k):
+    '''
+    Get top impactful channels in previous layer
+    * input
+        - I_layers: a dictionary for influence matrices for the layer
+            - key: layer
+            - val: influence matrix of the layer
+        - layer: the name of layer
+        - channel: channel in the layer
+        - pred_class: the predicted class
+        - k: the number of top impactful previous channels
+    * output
+        - top_prev_channels: top k impactful previous channels
+        - top_prev_infs: influences of the top k impactful previous channels
+    '''
+    
+    # Get influences
+    infs = I_layers[layer][pred_class][channel]
+    
+    # Get top k previous channels
+    top_prev_channels = sorted(infs, key=infs.get, reverse=True)[:k]
+    top_prev_infs = [infs[c] for c in top_prev_channels]
+    top_prev_channels = [int(c) for c in top_prev_channels]
+        
+    # Figure out which branch is connected to the channel
+    branch = get_branch(layer, channel, layer_channels)
+    
+    # If the branch goes through inner layers
+    if branch in [1, 2]:
+        inner_layer = '{}_{}'.format(layer, branch)
+        inf_inner = I_layers[inner_layer][pred_class]
+        top_infs = defaultdict(lambda: 0)
+                
+        for prev_channel in top_prev_channels:
+            prev_infs = inf_inner[prev_channel]
+            for prev_prev_channel in prev_infs.keys():
+                top_infs[prev_prev_channel] += prev_infs[prev_prev_channel]
+        top_prev_prev_channels = sorted(top_infs, key=top_infs.get, reverse=True)[:k]
+        top_prev_prev_infs = [top_infs[c] for c in top_prev_prev_channels]
+        top_prev_prev_channels = [int(c) for c in top_prev_prev_channels]
+        
+        return top_prev_prev_channels, top_prev_prev_infs
+        
+    else:
+        return top_prev_channels, top_prev_infs
+
+
+def get_branch(layer, channel, layer_channels):
