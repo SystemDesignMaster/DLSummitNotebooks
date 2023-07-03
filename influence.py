@@ -236,3 +236,87 @@ def get_intermediate_layer_tensors(prev_layer, layer):
     t_a0 = tf.get_default_graph().get_tensor_by_name('import/%s:0' % prev_layer)
     t_a1 = tf.get_default_graph().get_tensor_by_name('import/%s_3x3_bottleneck:0' % layer)
     t_a2 = tf.get_default_graph().get_tensor_by_name('import/%s_5x5_bottleneck:0' % layer)
+    return t_a0, t_a1, t_a2
+
+
+def get_layers(graph_nodes):
+    '''
+    Get all layers
+    * input
+        - graph_nodes: tensorflow graph nodes
+    * output
+        - layers: list of all layers
+    '''
+    layers = []
+    for n in graph_nodes:
+        node_name = n.name
+        if node_name[-2:] == '_w':
+            layer = node_name.split('_')[0]
+            if layer not in layers:
+                layers.append(layer)
+    return layers
+
+
+def get_channel_sizes(layer, weight_nodes):
+    '''
+    Get channel sizes
+    * input
+        - layer: the name of layer
+        - weight_nodes: tensorflow nodes for all filters
+    * output
+        - channel_sizes: list of channel size for all pre-concatenated blocks
+    '''
+    
+    channel_sizes = [get_shape_of_node(n)[0] for n in weight_nodes if layer in n.name and '_b' == n.name[-2:] and 'bottleneck' not in n.name]
+    return channel_sizes
+
+
+def get_shape_of_node(n):
+    '''
+    Get the shape of the tensorflow node
+    * input
+        - n: tensorflow node
+    * output
+        - tensor_shape: shape of n
+    '''
+    dims = n.attr['value'].tensor.tensor_shape.dim
+    tensor_shape = [d.size for d in dims]
+    return tensor_shape
+
+
+def get_num_channel(layer, weight_nodes):
+    '''
+    Get the number of channels in the layer
+    * input
+        - layer: the name of layer (e.g. 'mixed5a' for normal layer, 'mixed5a_1' for 1st branch after mixed_5a layer)
+        - is_branch: whether the layer is in a branch
+    * output
+        - num_channel: the number of channel
+    '''
+    
+    is_branch = '_' in layer
+    
+    if is_branch:
+        layer_name = layer[:-2]
+        branch = int(layer[-1])
+        branch_weights = [n for n in weight_nodes if layer_name in n.name and 'bottleneck_w' in n.name]
+        branch_weight = branch_weights[branch - 1]
+        num_channel = get_shape_of_node(branch_weight)[-1]
+        return num_channel
+    
+    else:
+        num_channel = np.sum(get_channel_sizes(layer, weight_nodes))
+        return num_channel
+
+
+def get_prev_layer(layers, layer):
+    '''
+    Get previous layer
+    * input
+        - layers: list of all layers
+        - layer: the name of a layer
+    * output
+        - prev_layer: the name of a previuos layer
+    '''
+    prev_layer = layers[layers.index(layer) - 1]
+    return prev_layer
