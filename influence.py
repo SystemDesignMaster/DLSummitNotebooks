@@ -554,3 +554,53 @@ def get_top_prevs(I_layers, layer, channel, pred_class, layer_channels, k):
 
 
 def get_branch(layer, channel, layer_channels):
+    '''
+    Get branch of the channel in the layer
+    * input
+        - layer: the name of layer
+        - channel: channel in the layer
+        - layer_channels: fragment sizes of the layer
+    * output
+        - branch: branch of the channel
+    '''
+    
+    channels = layer_channels[:]
+    for i in range(len(channels) - 1):
+        channels[i + 1] += channels[i]
+        
+    branch = np.searchsorted(channels, channel, side='right')
+    
+    return branch
+
+
+# def generate_save_chain(pred_class, all_layers, I_mat_dirpath, chain_dirpath, channels, layer_fragment_sizes, chain_k):
+#     '''
+#     * input
+#         - channels: starting channels in mixed5b
+#     '''
+#     # Get layers starting from the given layer to the input layer
+#     start_idx, end_idx = all_layers.index('mixed5b'), all_layers.index('mixed3a')
+#     target_layers = all_layers[start_idx: end_idx - 1: -1]
+
+#     # Load I matrices
+#     Is = {}
+#     for layer in target_layers:
+#         print('loading ', layer)
+#         Is[layer] = load_inf_matrix(I_mat_dirpath, layer)
+#         for branch in [1, 2]:
+#             inner_layer = '{}_{}'.format(layer, branch)
+#             Is[inner_layer] = load_inf_matrix(I_mat_dirpath, inner_layer)
+
+#     # Get chains
+#     chains = gen_impactful_chains(Is, 'mixed5b', channels, pred_class, all_layers, layer_fragment_sizes, chain_k)
+
+#     # Save chains
+#     filename = chain_dirpath + 'chain_{}.json'.format(pred_class)
+#     with open(filename, 'w') as f:
+#         json.dump(chains, f, indent=2)
+
+
+if __name__ == '__main__':
+    main()
+
+
